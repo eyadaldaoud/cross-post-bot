@@ -1,110 +1,69 @@
 /**
  * lib/downloader.ts
  *
- * Isolated video downloader module using yt-dlp as a subprocess.
- * Swap this file's implementation to change the download mechanism
- * without touching any other part of the codebase.
- */
-
-import { spawn, execFile } from "child_process";
-import { promisify } from "util";
-import path from "path";
-import { randomUUID } from "crypto";
-import fs from "fs";
-
-const execFileAsync = promisify(execFile);
-
-/**
- * Verifies that yt-dlp is available on the system PATH.
- * Throws a descriptive error if not found.
- */
-async function ensureYtDlp(): Promise<void> {
-  try {
-    await execFileAsync("which", ["yt-dlp"]);
-  } catch {
-    throw new Error(
-      "yt-dlp is not installed or not on PATH. " +
-        "Install it with: brew install yt-dlp  OR  pip install yt-dlp"
-    );
-  }
-}
-
-/**
- * Downloads an Instagram Reel (or any yt-dlp-supported URL) to a local temp file.
- *
- * @param url - The Instagram Reel URL to download
- * @returns Absolute path to the downloaded mp4 file
- * @throws Error with a descriptive message if yt-dlp is missing or download fails
+ * Downloads videos from Telegram file servers using the Bot API getFile endpoint.
+ * The user forwards a video (e.g. from \@Instagram_reels_dl_bot) to our bot,
+ * and we download it directly from Telegram's CDN.
  *
  * ---
  * HOW TO SWAP THE DOWNLOADER:
- * Replace the body of this function with any other download mechanism
- * (e.g. a third-party API, a different CLI tool, a direct fetch).
- * The rest of the codebase only depends on the function signature:
- *   downloadReel(url: string): Promise<string>
+ * Replace the body of `downloadFromTelegramFileId()` with any other mechanism
+ * (e.g. yt-dlp, a third-party API, gallery-dl).
+ * The webhook handler only calls `downloadFromTelegramFileId(fileId)` — nothing
+ * else in the codebase needs to change.
  */
-export async function downloadReel(url: string): Promise<string> {
-  await ensureYtDlp();
 
-  const tmpDir = "/tmp";
-  const uuid = randomUUID();
-  // yt-dlp will replace %(ext)s with the actual extension
-  const outputTemplate = path.join(tmpDir, `${uuid}.%(ext)s`);
-  // The final path we expect after --merge-output-format mp4
-  const expectedPath = path.join(tmpDir, `${uuid}.mp4`);
+import { randomUUID } from "crypto";
+import fs from "fs";
+import path from "path";
 
-  return new Promise((resolve, reject) => {
-    const args = [
-      url,
-      "-o",
-      outputTemplate,
-      "--merge-output-format",
-      "mp4",
-      "--no-playlist",
-      "--quiet",
-      "--no-warnings",
-    ];
+/**
+ * Downloads a video from Telegram's file servers given a Telegram file_id.
+ *
+ * Steps:
+ *  1. Calls getFile to resolve the file_id → a temporary file path on Telegram's CDN
+ *  2. Fetches the binary from https://api.telegram.org/file/bot<TOKEN>/<path>
+ *  3. Saves it to /tmp/<uuid>.<ext> and returns the local path
+ *
+ * @param fileId - Telegram file_id from message.video.file_id or message.document.file_id
+ * @returns Absolute path to the downloaded file in /tmp
+ * @throws Descriptive error if the Telegram API call or download fails
+ */
+export async function downloadFromTelegramFileId(fileId: string): Promise<string> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) throw new Error("Missing TELEGRAM_BOT_TOKEN environment variable.");
 
-    const proc = spawn("yt-dlp", args);
+  // Step 1: resolve file_id → CDN path
+  const infoRes = await fetch(
+    `https://api.telegram.org/bot${token}/getFile?file_id=${encodeURIComponent(fileId)}`
+  );
+  const info = (await infoRes.json()) as { ok: boolean; result?: { file_path: string }; description?: string };
 
-    let stderr = "";
-    proc.stderr.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString();
-    });
+  if (!info.ok || !info.result?.file_path) {
+    throw new Error(
+      `Telegram getFile failed for file_id ${fileId}: ${
+        info.description ?? JSON.stringify(info)
+      }`
+    );
+  }
 
-    proc.on("close", (code) => {
-      if (code !== 0) {
-        return reject(
-          new Error(
-            `yt-dlp exited with code ${code}. ` +
-              (stderr ? `Stderr: ${stderr.trim()}` : "No additional output.")
-          )
-        );
-      }
+  const cdnPath = info.result.file_path;
+  const ext = path.extname(cdnPath) || ".mp4";
+  const localPath = path.join("/tmp", `${randomUUID()}${ext}`);
 
-      // Verify the file exists
-      if (!fs.existsSync(expectedPath)) {
-        // yt-dlp might have chosen a different path — try globbing for the uuid
-        const files = fs
-          .readdirSync(tmpDir)
-          .filter((f) => f.startsWith(uuid))
-          .map((f) => path.join(tmpDir, f));
+  // Step 2: download the binary
+  const fileRes = await fetch(
+    `https://api.telegram.org/file/bot${token}/${cdnPath}`
+  );
 
-        if (files.length === 0) {
-          return reject(
-            new Error(
-              `yt-dlp finished but no output file found for UUID ${uuid}.`
-            )
-          );
-        }
-        return resolve(files[0]);
-      }
+  if (!fileRes.ok) {
+    throw new Error(
+      `Failed to download file from Telegram CDN (HTTP ${fileRes.status}): ${cdnPath}`
+    );
+  }
 
-      resolve(expectedPath);
-    });
+  const buffer = Buffer.from(await fileRes.arrayBuffer());
+  fs.writeFileSync(localPath, buffer);
 
-    proc.on("error", (err) => {
-      reject(new Error(`Failed to spawn yt-dlp: ${err.message}`));
-    });
-  });
+  return localPath;
 }
