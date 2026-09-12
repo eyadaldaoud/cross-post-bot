@@ -86,6 +86,11 @@ export async function setSession(
   );
 
   if (error) {
+    if (error.message.includes("tg_caption") || error.code === "42703") {
+      throw new Error(
+        `Database column 'tg_caption' is missing.\n\nPlease run this SQL in your Supabase SQL Editor:\n\nALTER TABLE bot_sessions ADD COLUMN IF NOT EXISTS tg_caption TEXT;`
+      );
+    }
     throw new Error(
       `Session write failed for chat ${chatId}: ${error.message}`
     );
