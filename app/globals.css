@@ -199,6 +199,7 @@ body {
 .card-icon.tg  { background: linear-gradient(135deg, #2196f3, #1565c0); }
 .card-icon.sb  { background: linear-gradient(135deg, #3ecf8e, #1a7a55); }
 .card-icon.yt  { background: linear-gradient(135deg, #ff5f57, #c00); }
+.card-icon.fb  { background: linear-gradient(135deg, #1877f2, #0b4999); }
 
 .card-body { flex: 1; min-width: 0; }
 .card-name  { font-weight: 700; font-size: 0.95rem; margin-bottom: 2px; }

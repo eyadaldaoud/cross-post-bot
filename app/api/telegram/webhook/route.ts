@@ -13,19 +13,29 @@
  *     │
  *     │  user forwards the downloaded video
  *     ▼
- *   Download from Telegram CDN → upload to Supabase
- *   State = waiting_for_caption
- *   Bot: "Send me a caption"
+ *   Download from Telegram CDN → upload to Supabase Storage
+ *   State = waiting_for_tg_caption
+ *   Bot: "Send the caption for Telegram"
  *     │
- *     │  user sends caption text
+ *     │  user sends Telegram caption
  *     ▼
- *   Publish to Instagram + Telegram in parallel → report results → clear session
+ *   Save tg_caption, state = waiting_for_ig_caption
+ *   Bot: "Send the caption for Instagram"
+ *     │
+ *     │  user sends Instagram caption
+ *     ▼
+ *   Publish to 4 targets: Telegram, Instagram Reel, Instagram Story, Facebook Page
+ *   Report per-platform results → delete video from storage → clear session
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { downloadFromTelegramFileId } from "@/lib/downloader";
 import { uploadVideo, deleteVideo } from "@/lib/storage";
-import { publishToInstagram } from "@/lib/instagram";
+import {
+  publishReelToInstagram,
+  publishStoryToInstagram,
+} from "@/lib/instagram";
+import { publishToFacebook } from "@/lib/facebook";
 import {
   sendMessage as tgSendMessage,
   sendVideo as tgSendVideo,
@@ -60,7 +70,6 @@ interface TelegramMessage {
   text?: string;
   video?: TelegramVideo;
   document?: TelegramDocument;
-  // Forwarded messages retain the original sender info
   forward_from?: { id: number };
   forward_from_chat?: { id: number };
 }
@@ -116,6 +125,7 @@ async function handleUrl(chatId: number, reelUrl: string): Promise<void> {
     state: "waiting_for_video",
     reel_url: reelUrl.trim(),
     video_public_url: "",
+    tg_caption: "",
   });
 
   await tgSendMessage(
@@ -126,7 +136,7 @@ async function handleUrl(chatId: number, reelUrl: string): Promise<void> {
 
 /**
  * waiting_for_video state: user forwarded the downloaded video.
- * Download it from Telegram CDN, upload to Supabase, ask for caption.
+ * Download it from Telegram CDN, upload to Supabase, ask for Telegram caption.
  */
 async function handleVideo(
   chatId: number,
@@ -159,9 +169,10 @@ async function handleVideo(
 
   try {
     await setSession(chatId, {
-      state: "waiting_for_caption",
+      state: "waiting_for_tg_caption",
       reel_url: reelUrl,
       video_public_url: publicUrl,
+      tg_caption: "",
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -172,42 +183,114 @@ async function handleVideo(
 
   await tgSendMessage(
     chatId,
-    "✅ Video ready\\! Now send me the *caption* for this post:"
+    "✅ Video ready\\!\n\nSend the caption for *Telegram*:"
   );
 }
 
 /**
- * waiting_for_caption state: user sent a caption.
- * Publish to Instagram and Telegram in parallel, report each result independently.
+ * Publishes the video across all 4 platforms independently:
+ * 1. Telegram
+ * 2. Instagram Reel
+ * 3. Instagram Story
+ * 4. Facebook Page
+ *
+ * One failure does not block the other platforms.
+ * Results are summarized in a per-platform report.
  */
-async function handleCaption(
+async function handlePublish(
   chatId: number,
-  caption: string,
-  videoPublicUrl: string
+  videoPublicUrl: string,
+  tgCaption: string,
+  igCaption: string
 ): Promise<void> {
-  await tgSendMessage(chatId, "🚀 Publishing to both platforms…");
+  await tgSendMessage(
+    chatId,
+    "🚀 *Publishing across platforms…*\n• Telegram\n• Instagram Reel\n• Instagram Story\n• Facebook Page"
+  );
 
-  const [igResult, tgResult] = await Promise.allSettled([
-    publishToInstagram(videoPublicUrl, caption),
-    tgSendVideo(chatId, videoPublicUrl, caption),
+  // Run Telegram, Facebook Page, and Instagram flow concurrently.
+  // Reel and Story run sequentially within the Instagram flow to prevent
+  // Meta container conflict on the same account.
+  const [tgResult, fbResult, igResults] = await Promise.allSettled([
+    tgSendVideo(chatId, videoPublicUrl, tgCaption),
+    publishToFacebook(videoPublicUrl, igCaption),
+    (async () => {
+      const reelRes = await Promise.allSettled([
+        publishReelToInstagram(videoPublicUrl, igCaption),
+      ]).then((r) => r[0]);
+
+      const storyRes = await Promise.allSettled([
+        publishStoryToInstagram(videoPublicUrl, igCaption),
+      ]).then((r) => r[0]);
+
+      return { reelRes, storyRes };
+    })(),
   ]);
 
-  if (igResult.status === "fulfilled") {
-    await tgSendMessage(
-      chatId,
-      `✅ *Instagram*: Published \\(ID: \`${igResult.value}\`\\)`
-    );
+  const reelResult =
+    igResults.status === "fulfilled"
+      ? igResults.value.reelRes
+      : (igResults as PromiseRejectedResult);
+
+  const storyResult =
+    igResults.status === "fulfilled"
+      ? igResults.value.storyRes
+      : (igResults as PromiseRejectedResult);
+
+  // Build per-platform status list
+  const lines: string[] = ["📊 *Publishing Results:*\n"];
+
+  // 1. Telegram
+  if (tgResult.status === "fulfilled") {
+    lines.push("✅ *Telegram*: Video posted");
   } else {
-    const msg = igResult.reason instanceof Error ? igResult.reason.message : String(igResult.reason);
-    await tgSendMessage(chatId, `❌ *Instagram failed*\n\`${msg}\``);
+    const msg =
+      tgResult.reason instanceof Error
+        ? tgResult.reason.message
+        : String(tgResult.reason);
+    lines.push(`❌ *Telegram*: Failed\n\`${msg}\``);
   }
 
-  if (tgResult.status === "fulfilled") {
-    await tgSendMessage(chatId, "✅ *Telegram*: Video posted");
+  // 2. Instagram Reel
+  if (reelResult.status === "fulfilled") {
+    lines.push(
+      `✅ *Instagram Reel*: Published \\(ID: \`${reelResult.value}\`\\)`
+    );
   } else {
-    const msg = tgResult.reason instanceof Error ? tgResult.reason.message : String(tgResult.reason);
-    await tgSendMessage(chatId, `❌ *Telegram video send failed*\n\`${msg}\``);
+    const msg =
+      reelResult.reason instanceof Error
+        ? reelResult.reason.message
+        : String(reelResult.reason);
+    lines.push(`❌ *Instagram Reel*: Failed\n\`${msg}\``);
   }
+
+  // 3. Instagram Story
+  if (storyResult.status === "fulfilled") {
+    lines.push(
+      `✅ *Instagram Story*: Published \\(ID: \`${storyResult.value}\`\\)`
+    );
+  } else {
+    const msg =
+      storyResult.reason instanceof Error
+        ? storyResult.reason.message
+        : String(storyResult.reason);
+    lines.push(`❌ *Instagram Story*: Failed\n\`${msg}\``);
+  }
+
+  // 4. Facebook Page
+  if (fbResult.status === "fulfilled") {
+    lines.push(
+      `✅ *Facebook Page*: Published \\(ID: \`${fbResult.value}\`\\)`
+    );
+  } else {
+    const msg =
+      fbResult.reason instanceof Error
+        ? fbResult.reason.message
+        : String(fbResult.reason);
+    lines.push(`❌ *Facebook Page*: Failed\n\`${msg}\``);
+  }
+
+  await tgSendMessage(chatId, lines.join("\n\n"));
 
   // Clear session regardless of outcome
   try {
@@ -216,15 +299,8 @@ async function handleCaption(
     console.warn("[webhook] Failed to clear session:", err);
   }
 
-  // Clean up Supabase Storage only after successful IG publish
-  if (igResult.status === "fulfilled") {
-    await deleteVideo(videoPublicUrl);
-  } else {
-    await tgSendMessage(
-      chatId,
-      `ℹ️ Video kept in storage for retry\\. Send the reel URL again to restart\\.`
-    );
-  }
+  // Clean up video from Supabase Storage once all platforms have fetched it
+  await deleteVideo(videoPublicUrl);
 }
 
 // ─── Main webhook handler ──────────────────────────────────────────────────────
@@ -261,16 +337,57 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const videoFileId = getVideoFileId(message);
     const text = message.text?.trim() ?? "";
 
+    // ── Global Cancel ──────────────────────────────────────────────────────────
+    if (text === "/cancel") {
+      if (session?.video_public_url) {
+        await deleteVideo(session.video_public_url);
+      }
+      await clearSession(chatId);
+      await tgSendMessage(
+        chatId,
+        "🔄 Cancelled\\. Send a new Instagram Reel URL to start\\."
+      );
+      return NextResponse.json({ ok: true });
+    }
+
     // ── Route by state ─────────────────────────────────────────────────────────
 
-    if (session?.state === "waiting_for_caption") {
+    if (session?.state === "waiting_for_tg_caption") {
       if (!text) {
-        await tgSendMessage(chatId, "✍️ Please send a text caption for the post.");
+        await tgSendMessage(chatId, "✍️ Please send a text caption for *Telegram*\\.");
         return NextResponse.json({ ok: true });
       }
-      await handleCaption(chatId, text, session.video_public_url);
 
-    } else if (session?.state === "waiting_for_video") {
+      await setSession(chatId, {
+        state: "waiting_for_ig_caption",
+        reel_url: session.reel_url,
+        video_public_url: session.video_public_url,
+        tg_caption: text,
+      });
+
+      await tgSendMessage(
+        chatId,
+        "✅ Telegram caption saved\\!\n\nNow send the caption for *Instagram* \\(used for Reel, Story & Facebook Page\\):"
+      );
+      return NextResponse.json({ ok: true });
+    }
+
+    if (session?.state === "waiting_for_ig_caption") {
+      if (!text) {
+        await tgSendMessage(chatId, "✍️ Please send a text caption for *Instagram*\\.");
+        return NextResponse.json({ ok: true });
+      }
+
+      await handlePublish(
+        chatId,
+        session.video_public_url,
+        session.tg_caption || "",
+        text
+      );
+      return NextResponse.json({ ok: true });
+    }
+
+    if (session?.state === "waiting_for_video") {
       if (videoFileId) {
         await handleVideo(chatId, videoFileId, session.reel_url);
       } else if (text) {
@@ -280,23 +397,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           `⏳ I'm waiting for the *video file*\\.\n\n1\\. Send your URL to @Instagram\\_reels\\_dl\\_bot\n2\\. Forward the video it sends back here\n\nOr send /cancel to start over\\.`
         );
       }
+      return NextResponse.json({ ok: true });
+    }
 
+    // Idle state
+    if (videoFileId) {
+      // User sent a video directly without a URL — that's fine, use empty reel_url
+      await handleVideo(chatId, videoFileId, "");
+    } else if (isInstagramReelUrl(text)) {
+      await handleUrl(chatId, text);
     } else {
-      // Idle state
-      if (text === "/cancel") {
-        await clearSession(chatId);
-        await tgSendMessage(chatId, "🔄 Cancelled\\. Send a new Instagram Reel URL to start\\.");
-      } else if (videoFileId) {
-        // User sent a video directly without a URL — that's fine, use empty reel_url
-        await handleVideo(chatId, videoFileId, "");
-      } else if (isInstagramReelUrl(text)) {
-        await handleUrl(chatId, text);
-      } else {
-        await tgSendMessage(
-          chatId,
-          "👋 Send me an Instagram Reel URL to get started\\.\n\nExample:\n`https://www.instagram.com/reels/ABC123/`"
-        );
-      }
+      await tgSendMessage(
+        chatId,
+        "👋 Send me an Instagram Reel URL to get started\\.\n\nExample:\n`https://www.instagram.com/reels/ABC123/`"
+      );
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

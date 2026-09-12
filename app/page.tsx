@@ -14,28 +14,31 @@ const ENV_VARS = [
   { key: "SUPABASE_BUCKET_NAME",      desc: "Storage bucket name" },
   { key: "IG_ACCESS_TOKEN",           desc: "Instagram access token" },
   { key: "IG_BUSINESS_ACCOUNT_ID",    desc: "Instagram account ID" },
+  { key: "FB_PAGE_ACCESS_TOKEN",      desc: "Facebook Page access token" },
+  { key: "FB_PAGE_ID",                desc: "Facebook Page numeric ID" },
 ] as const;
 
 const FLOW_STEPS = [
-  { icon: "🔗", label: "Send URL",       desc: "Paste an Instagram Reel URL in your Telegram chat" },
-  { icon: "⬇️", label: "Download",       desc: "yt-dlp fetches the video; it's uploaded to Supabase" },
-  { icon: "✍️", label: "Send Caption",   desc: "Bot asks you for a caption; reply with your text" },
-  { icon: "🚀", label: "Published",      desc: "Video posted to Instagram & Telegram simultaneously" },
+  { icon: "🔗", label: "Send URL / Video",   desc: "Send an IG Reel URL or forward a video directly" },
+  { icon: "📥", label: "Forward Video",      desc: "Forward the MP4 from @Instagram_reels_dl_bot" },
+  { icon: "✍️", label: "Two Captions",       desc: "Send Telegram caption, then Instagram caption" },
+  { icon: "🚀", label: "4-Way Cross-Post",   desc: "Publishes to Telegram, IG Reel, IG Story & Facebook Page" },
 ] as const;
 
 const PLATFORMS = [
-  { icon: "📸", cls: "ig", name: "Instagram",  sub: "Graph API — Reels container flow", envKey: "IG_ACCESS_TOKEN" },
-  { icon: "✈️", cls: "tg", name: "Telegram",   sub: "Webhook — sendVideo",              envKey: "TELEGRAM_BOT_TOKEN" },
-  { icon: "🗄️", cls: "sb", name: "Supabase",   sub: "Storage + session state",          envKey: "SUPABASE_URL" },
-  { icon: "📥", cls: "yt", name: "yt-dlp",      sub: "System binary — video download",   envKey: null },
+  { icon: "📸", cls: "ig", name: "Instagram Reel",   sub: "Graph API — Reels container flow",   envKey: "IG_ACCESS_TOKEN" },
+  { icon: "✨", cls: "ig", name: "Instagram Story",  sub: "Graph API — Stories container flow", envKey: "IG_ACCESS_TOKEN" },
+  { icon: "✈️", cls: "tg", name: "Telegram",         sub: "Webhook — sendVideo with caption",   envKey: "TELEGRAM_BOT_TOKEN" },
+  { icon: "📘", cls: "fb", name: "Facebook Page",    sub: "Graph API — /videos endpoint",       envKey: "FB_PAGE_ACCESS_TOKEN" },
+  { icon: "🗄️", cls: "sb", name: "Supabase",         sub: "Storage + session state",            envKey: "SUPABASE_URL" },
 ] as const;
 
 const CHECKLIST = [
-  { label: "Install yt-dlp",              hint: "brew install yt-dlp",             envKey: null,                       manual: false },
-  { label: "Create .env.local",           hint: "cp .env.local.example .env.local", envKey: "TELEGRAM_BOT_TOKEN",      manual: false },
-  { label: "Create Supabase bucket",      hint: "Public bucket named as SUPABASE_BUCKET_NAME", envKey: "SUPABASE_BUCKET_NAME", manual: false },
-  { label: "Run bot_sessions SQL",        hint: "See README §2 for the CREATE TABLE statement", envKey: "SUPABASE_URL",        manual: false },
-  { label: "Register Telegram webhook",   hint: "POST /setWebhook with your public URL",        envKey: null,                  manual: true  },
+  { label: "Create .env.local",                 hint: "cp .env.local.example .env.local", envKey: "TELEGRAM_BOT_TOKEN",      manual: false },
+  { label: "Create Supabase bucket",            hint: "Public bucket named as SUPABASE_BUCKET_NAME", envKey: "SUPABASE_BUCKET_NAME", manual: false },
+  { label: "Run bot_sessions SQL",              hint: "CREATE TABLE bot_sessions (chat_id BIGINT PRIMARY KEY, state TEXT, reel_url TEXT, video_public_url TEXT, tg_caption TEXT, updated_at TIMESTAMPTZ DEFAULT now());", envKey: "SUPABASE_URL", manual: false },
+  { label: "Add tg_caption column (if upgrade)", hint: "ALTER TABLE bot_sessions ADD COLUMN IF NOT EXISTS tg_caption TEXT;", envKey: "SUPABASE_URL", manual: false },
+  { label: "Register Telegram webhook",         hint: "POST /setWebhook with your public URL",        envKey: null,                  manual: true  },
 ] as const;
 
 export default function Home() {

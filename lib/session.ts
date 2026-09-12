@@ -4,26 +4,36 @@
  * Supabase-backed per-chat conversation state.
  * Safe for serverless/Vercel — persists across function invocations.
  *
- * Required Supabase table (run once):
+ * Required Supabase table (run once in SQL Editor):
  *
  *   CREATE TABLE bot_sessions (
  *     chat_id          BIGINT PRIMARY KEY,
  *     state            TEXT,
  *     reel_url         TEXT,
  *     video_public_url TEXT,
+ *     tg_caption       TEXT,
  *     updated_at       TIMESTAMPTZ DEFAULT now()
  *   );
+ *
+ * If you created the table earlier WITHOUT the tg_caption column, add it:
+ *
+ *   ALTER TABLE bot_sessions ADD COLUMN tg_caption TEXT;
  */
 
 import { createClient } from "@supabase/supabase-js";
 
-export type SessionState = "waiting_for_video" | "waiting_for_caption";
+export type SessionState =
+  | "waiting_for_video"
+  | "waiting_for_tg_caption"
+  | "waiting_for_ig_caption";
 
 export interface BotSession {
   chat_id: number;
   state: SessionState;
   reel_url: string;
   video_public_url: string;
+  /** Saved after the user sends the Telegram caption, before asking for the IG caption. */
+  tg_caption: string;
 }
 
 const TABLE = "bot_sessions";

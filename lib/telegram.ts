@@ -6,6 +6,9 @@
  * awkward in a webhook/serverless setup.
  */
 
+/** Telegram's hard cap for video/photo captions. */
+const MAX_CAPTION_LENGTH = 1024;
+
 function getBotToken(): string {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
@@ -42,36 +45,54 @@ async function callApi<T = unknown>(
 /**
  * Sends a plain text message to a chat.
  *
- * @param chatId  - Telegram chat ID
- * @param text    - Message text (supports Markdown if parse_mode is set)
+ * @param chatId    - Telegram chat ID
+ * @param text      - Message text
+ * @param parseMode - Formatting parse mode (defaults to Markdown)
  */
-export async function sendMessage(chatId: number, text: string): Promise<void> {
+export async function sendMessage(
+  chatId: number,
+  text: string,
+  parseMode: "Markdown" | "HTML" | null = "Markdown"
+): Promise<void> {
   await callApi("sendMessage", {
     chat_id: chatId,
     text,
-    parse_mode: "Markdown",
+    ...(parseMode ? { parse_mode: parseMode } : {}),
   });
 }
 
 /**
- * Sends a video to a chat using a public URL.
- * Telegram fetches the video directly from the URL — no binary upload needed.
+ * Sends a video to a chat using a public URL, handling Telegram's 1024-char
+ * caption limit automatically.
+ *
+ * - If the caption fits (≤ 1024 chars): sends the video with caption attached.
+ * - If the caption exceeds 1024 chars: sends the video with NO caption, then
+ *   immediately sends the full caption text as a separate message in the same chat.
+ *
+ * Captions are sent without parse_mode to prevent syntax errors on user-entered text.
  *
  * @param chatId    - Telegram chat ID
  * @param videoUrl  - Publicly accessible video URL
- * @param caption   - Caption for the video
+ * @param caption   - Caption text (any length — handled safely)
  */
 export async function sendVideo(
   chatId: number,
   videoUrl: string,
   caption: string
 ): Promise<void> {
+  const captionFits = caption.length <= MAX_CAPTION_LENGTH;
+
   await callApi("sendVideo", {
     chat_id: chatId,
     video: videoUrl,
-    caption,
+    ...(captionFits && caption ? { caption } : {}),
     supports_streaming: true,
   });
+
+  // If caption was too long for the video message, send it as a follow-up text (plain text)
+  if (!captionFits && caption) {
+    await sendMessage(chatId, caption, null);
+  }
 }
 
 /**

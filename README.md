@@ -1,6 +1,6 @@
 # cross-post-bot
 
-A Next.js app with a Telegram bot that cross-posts Instagram Reels to both **Instagram** and **Telegram** in parallel — personal use only.
+A Next.js Telegram bot that automates cross-posting Instagram Reels across **Telegram**, **Instagram Reels**, **Instagram Stories**, and a **Facebook Page** simultaneously — personal use only.
 
 ---
 
@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000) to view the setup dashboard.
 
 ---
 
@@ -21,10 +21,11 @@ Open [http://localhost:3000](http://localhost:3000).
 
 | Requirement | Notes |
 |---|---|
-| **yt-dlp** | System binary — install with `brew install yt-dlp` or `pip install yt-dlp` |
 | **Supabase project** | Free tier is fine |
 | **Telegram Bot** | Create via [@BotFather](https://t.me/BotFather) |
 | **Instagram Graph API** | Access token + Business/Creator account ID from [Meta Developers](https://developers.facebook.com) |
+| **Facebook Page** | Page Access Token + Page ID with `pages_manage_posts` and `pages_read_engagement` |
+| **@Instagram_reels_dl_bot** | Free Telegram bot used to download reels (or send MP4 directly) |
 
 ---
 
@@ -43,8 +44,10 @@ cp .env.local.example .env.local
 | `SUPABASE_URL` | Your Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key (Project Settings → API) |
 | `SUPABASE_BUCKET_NAME` | Name of the public storage bucket (e.g. `reels`) |
-| `IG_ACCESS_TOKEN` | Instagram short-lived or long-lived access token |
+| `IG_ACCESS_TOKEN` | Instagram access token (`instagram_content_publish`) |
 | `IG_BUSINESS_ACCOUNT_ID` | Numeric Instagram Business/Creator account ID |
+| `FB_PAGE_ACCESS_TOKEN` | Facebook Page access token (`pages_manage_posts`, `pages_read_engagement`) |
+| `FB_PAGE_ID` | Numeric Facebook Page ID |
 
 ---
 
@@ -64,9 +67,15 @@ CREATE TABLE bot_sessions (
   state            TEXT,
   reel_url         TEXT,
   video_public_url TEXT,
+  tg_caption       TEXT,
   updated_at       TIMESTAMPTZ DEFAULT now()
 );
 ```
+
+> **If upgrading an existing table**, add the new `tg_caption` column:
+> ```sql
+> ALTER TABLE bot_sessions ADD COLUMN IF NOT EXISTS tg_caption TEXT;
+> ```
 
 ---
 
@@ -95,54 +104,53 @@ curl "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo"
 
 ---
 
-### 4. How to Use the Bot
+### 4. Conversation & Publishing Flow
 
-1. Open a chat with your bot in Telegram
-2. Send an Instagram Reel URL:
-   ```
-   https://www.instagram.com/reels/ABC123xyz/
-   ```
-3. The bot downloads the video, uploads it to Supabase, and asks for a caption
-4. Send your caption as a plain text message
-5. The bot publishes to **Instagram** (via Graph API) and **Telegram** in parallel
-6. It reports success or failure for each platform independently
-
----
-
-### 5. How to Swap the Downloader
-
-The download logic is fully isolated in [`lib/downloader.ts`](lib/downloader.ts). The rest of the codebase only depends on this signature:
-
-```typescript
-export async function downloadReel(url: string): Promise<string>
-// Returns: absolute path to the downloaded mp4 file
+```
+You                          Our Bot                    @Instagram_reels_dl_bot
+ │                               │                               │
+ │── instagram.com/reels/...  ──▶│                               │
+ │                               │── "Forward me the video" ────▶│ (you do this)
+ │                               │                               │
+ │◀───────────── video MP4 ──────┴───────────────────────────────│
+ │
+ │── forward video ─────────────▶│
+ │                               │── upload to Supabase Storage
+ │◀── "Send caption for Telegram"│
+ │
+ │── [Telegram caption] ────────▶│
+ │◀── "Send caption for IG" ─────│
+ │
+ │── [Instagram caption] ───────▶│
+ │                               │── 🚀 Publish to 4 targets:
+ │                               │    1. Telegram (sendVideo + follow-up if >1024 chars)
+ │                               │    2. Instagram Reel (create container → poll → publish)
+ │                               │    3. Instagram Story (create container → poll → publish)
+ │                               │    4. Facebook Page (/videos endpoint)
+ │                               │
+ │◀── 📊 Per-platform report ────│ (✅ / ❌ for each target)
 ```
 
-To replace `yt-dlp` with another mechanism (e.g. a third-party API, `gallery-dl`, or a custom scraper), replace only the body of `downloadReel()` in `lib/downloader.ts`. No other files need to change.
+- **Two separate captions**: Tailor your caption for Telegram and another for Instagram/Facebook.
+- **Caption length fix**: Telegram's 1024-character caption limit is handled automatically (if caption exceeds 1024 chars, it sends the video cleanly and posts the full text as an immediate follow-up message).
+- **Independent publishing**: If one platform fails (e.g. missing Facebook token or API rate limit), the other platforms still publish successfully and errors are reported clearly.
+- **Cancel command**: Send `/cancel` at any time to abort the current flow and clear temporary files.
 
 ---
 
-### 6. Module Structure
+### 5. Module Structure
 
 ```
 lib/
-├── downloader.ts   — yt-dlp subprocess wrapper (swap here to change download method)
-├── instagram.ts    — Instagram Graph API: 3-step container → poll → publish flow
+├── facebook.ts     — Facebook Graph API: /videos publish endpoint
+├── instagram.ts    — Instagram Graph API: shared container flow for Reels & Stories
 ├── session.ts      — Supabase-backed conversation state (safe for serverless)
 ├── storage.ts      — Supabase Storage: upload and delete video files
-└── telegram.ts     — Telegram Bot API: sendMessage, sendVideo
+└── telegram.ts     — Telegram Bot API: sendMessage, sendVideo (with caption length handling)
 
 app/api/telegram/webhook/
 └── route.ts        — Main webhook handler and conversation state machine
 ```
-
----
-
-### 7. Instagram API Notes
-
-- The bot uses the [Instagram Graph API v21.0](https://developers.facebook.com/docs/instagram-api) Reels publishing endpoint
-- After creating a media container, the bot polls every 12 seconds (max 25 attempts ≈ 5 minutes) for the video to process
-- The current implementation reads `IG_ACCESS_TOKEN` directly — no auto-refresh logic. If you need long-lived tokens, exchange the short-lived token manually via the [token refresh endpoint](https://developers.facebook.com/docs/instagram-basic-display-api/reference/refresh_access_token)
 
 ---
 
@@ -152,6 +160,4 @@ app/api/telegram/webhook/
 vercel deploy
 ```
 
-Make sure to add all environment variables in the Vercel project settings, then update the Telegram webhook URL to your production domain.
-
-> **Note**: `yt-dlp` must be available on the server. On Vercel, you'll need to install it as part of a build step or use a Docker-based deployment. Consider swapping the downloader for a cloud-based video download API in production.
+Add all environment variables from `.env.local.example` in the Vercel project settings, then update the Telegram webhook URL to your production domain.
