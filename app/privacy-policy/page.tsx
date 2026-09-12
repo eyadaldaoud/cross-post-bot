@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 export default function PrivacyPolicy() {
   return (
     <>
-      {/* Background glow */}
+
       <div className="glow-blob" />
 
       {/* ── Nav ─────────────────────────────────────────────── */}
