@@ -9,6 +9,7 @@
 const ENV_VARS = [
   { key: "TELEGRAM_BOT_TOKEN",        desc: "Telegram bot token" },
   { key: "TELEGRAM_ALLOWED_USER_ID",  desc: "Your Telegram user ID" },
+  { key: "TELEGRAM_CHANNEL_ID",       desc: "Target Telegram channel (@username or -100... ID)" },
   { key: "SUPABASE_URL",              desc: "Supabase project URL" },
   { key: "SUPABASE_SERVICE_ROLE_KEY", desc: "Supabase service role key" },
   { key: "SUPABASE_BUCKET_NAME",      desc: "Storage bucket name" },
@@ -19,16 +20,15 @@ const ENV_VARS = [
 ] as const;
 
 const FLOW_STEPS = [
-  { icon: "🔗", label: "Send URL / Video",   desc: "Send an IG Reel URL or forward a video directly" },
+  { icon: "🔗", label: "Send URL / Video",   desc: "Send an IG Reel URL or forward a video directly in bot DM" },
   { icon: "📥", label: "Forward Video",      desc: "Forward the MP4 from @Instagram_reels_dl_bot" },
   { icon: "✍️", label: "Two Captions",       desc: "Send Telegram caption, then Instagram caption" },
-  { icon: "🚀", label: "4-Way Cross-Post",   desc: "Publishes to Telegram, IG Reel, IG Story & Facebook Page" },
+  { icon: "🚀", label: "3-Way Cross-Post",   desc: "Publishes to Telegram Channel, IG Reel & Facebook Page" },
 ] as const;
 
 const PLATFORMS = [
+  { icon: "✈️", cls: "tg", name: "Telegram Channel", sub: "Channel posting — sendVideo",        envKey: "TELEGRAM_CHANNEL_ID" },
   { icon: "📸", cls: "ig", name: "Instagram Reel",   sub: "Graph API — Reels container flow",   envKey: "IG_ACCESS_TOKEN" },
-  { icon: "✨", cls: "ig", name: "Instagram Story",  sub: "Graph API — Stories container flow", envKey: "IG_ACCESS_TOKEN" },
-  { icon: "✈️", cls: "tg", name: "Telegram",         sub: "Webhook — sendVideo with caption",   envKey: "TELEGRAM_BOT_TOKEN" },
   { icon: "📘", cls: "fb", name: "Facebook Page",    sub: "Graph API — /videos endpoint",       envKey: "FB_PAGE_ACCESS_TOKEN" },
   { icon: "🗄️", cls: "sb", name: "Supabase",         sub: "Storage + session state",            envKey: "SUPABASE_URL" },
 ] as const;

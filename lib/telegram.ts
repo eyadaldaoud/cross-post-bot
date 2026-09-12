@@ -17,6 +17,18 @@ function getBotToken(): string {
   return token;
 }
 
+/**
+ * Gets the configured Telegram Channel ID for publishing.
+ * Supports numeric IDs (e.g. -1001234567890) and @username strings.
+ */
+export function getTelegramChannelId(): string | number {
+  const raw = process.env.TELEGRAM_CHANNEL_ID?.trim();
+  if (!raw) {
+    throw new Error("Missing TELEGRAM_CHANNEL_ID environment variable.");
+  }
+  return raw;
+}
+
 function apiUrl(method: string): string {
   return `https://api.telegram.org/bot${getBotToken()}/${method}`;
 }
@@ -43,14 +55,14 @@ async function callApi<T = unknown>(
 }
 
 /**
- * Sends a plain text message to a chat.
+ * Sends a plain text message to a chat or channel.
  *
- * @param chatId    - Telegram chat ID
+ * @param chatId    - Telegram chat ID or channel username/ID
  * @param text      - Message text
  * @param parseMode - Formatting parse mode (defaults to Markdown)
  */
 export async function sendMessage(
-  chatId: number,
+  chatId: number | string,
   text: string,
   parseMode: "Markdown" | "HTML" | null = "Markdown"
 ): Promise<void> {
@@ -62,21 +74,21 @@ export async function sendMessage(
 }
 
 /**
- * Sends a video to a chat using a public URL, handling Telegram's 1024-char
- * caption limit automatically.
+ * Sends a video to a chat or channel using a public URL, handling Telegram's
+ * 1024-char caption limit automatically.
  *
  * - If the caption fits (≤ 1024 chars): sends the video with caption attached.
  * - If the caption exceeds 1024 chars: sends the video with NO caption, then
- *   immediately sends the full caption text as a separate message in the same chat.
+ *   immediately sends the full caption text as a separate message in the same chat/channel.
  *
  * Captions are sent without parse_mode to prevent syntax errors on user-entered text.
  *
- * @param chatId    - Telegram chat ID
+ * @param chatId    - Telegram chat ID or channel username/ID
  * @param videoUrl  - Publicly accessible video URL
  * @param caption   - Caption text (any length — handled safely)
  */
 export async function sendVideo(
-  chatId: number,
+  chatId: number | string,
   videoUrl: string,
   caption: string
 ): Promise<void> {

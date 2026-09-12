@@ -5,7 +5,7 @@
  *
  * Conversation state machine:
  *
- *   [idle]
+ *   [idle] (in user DM)
  *     │  user sends Instagram URL
  *     ▼
  *   Save reel_url, state = waiting_for_video
@@ -20,25 +20,26 @@
  *     │  user sends Telegram caption
  *     ▼
  *   Save tg_caption, state = waiting_for_ig_caption
- *   Bot: "Send the caption for Instagram"
+ *   Bot: "Send the caption for Instagram (used for Reel & Facebook Page)"
  *     │
  *     │  user sends Instagram caption
  *     ▼
- *   Publish to 4 targets: Telegram, Instagram Reel, Instagram Story, Facebook Page
- *   Report per-platform results → delete video from storage → clear session
+ *   Publish to 3 targets:
+ *     1. Telegram Channel (TELEGRAM_CHANNEL_ID)
+ *     2. Instagram Reel (via Graph API)
+ *     3. Facebook Page (via Graph API)
+ *   Report 3-target results back to user DM → delete video from storage → clear session
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { downloadFromTelegramFileId } from "@/lib/downloader";
 import { uploadVideo, deleteVideo } from "@/lib/storage";
-import {
-  publishReelToInstagram,
-  publishStoryToInstagram,
-} from "@/lib/instagram";
+import { publishReelToInstagram } from "@/lib/instagram";
 import { publishToFacebook } from "@/lib/facebook";
 import {
   sendMessage as tgSendMessage,
   sendVideo as tgSendVideo,
+  getTelegramChannelId,
 } from "@/lib/telegram";
 import { getSession, setSession, clearSession } from "@/lib/session";
 import fs from "fs";
@@ -188,14 +189,12 @@ async function handleVideo(
 }
 
 /**
- * Publishes the video across all 4 platforms independently:
- * 1. Telegram
+ * Publishes the video across 3 platforms independently:
+ * 1. Telegram Channel (TELEGRAM_CHANNEL_ID)
  * 2. Instagram Reel
- * 3. Instagram Story
- * 4. Facebook Page
+ * 3. Facebook Page
  *
- * One failure does not block the other platforms.
- * Results are summarized in a per-platform report.
+ * Status updates and final results are sent back to the user's private DM (chatId).
  */
 async function handlePublish(
   chatId: number,
@@ -205,50 +204,31 @@ async function handlePublish(
 ): Promise<void> {
   await tgSendMessage(
     chatId,
-    "🚀 *Publishing across platforms…*\n• Telegram\n• Instagram Reel\n• Instagram Story\n• Facebook Page"
+    "🚀 *Publishing across platforms…*\n• Telegram Channel\n• Instagram Reel\n• Facebook Page"
   );
 
-  // Run Telegram, Facebook Page, and Instagram flow concurrently.
-  // Reel and Story run sequentially within the Instagram flow to prevent
-  // Meta container conflict on the same account.
-  const [tgResult, fbResult, igResults] = await Promise.allSettled([
-    tgSendVideo(chatId, videoPublicUrl, tgCaption),
-    publishToFacebook(videoPublicUrl, igCaption),
+  // Run Telegram Channel, Instagram Reel, and Facebook Page in parallel
+  const [tgResult, reelResult, fbResult] = await Promise.allSettled([
     (async () => {
-      const reelRes = await Promise.allSettled([
-        publishReelToInstagram(videoPublicUrl, igCaption),
-      ]).then((r) => r[0]);
-
-      const storyRes = await Promise.allSettled([
-        publishStoryToInstagram(videoPublicUrl, igCaption),
-      ]).then((r) => r[0]);
-
-      return { reelRes, storyRes };
+      const channelId = getTelegramChannelId();
+      return tgSendVideo(channelId, videoPublicUrl, tgCaption);
     })(),
+    publishReelToInstagram(videoPublicUrl, igCaption),
+    publishToFacebook(videoPublicUrl, igCaption),
   ]);
 
-  const reelResult =
-    igResults.status === "fulfilled"
-      ? igResults.value.reelRes
-      : (igResults as PromiseRejectedResult);
-
-  const storyResult =
-    igResults.status === "fulfilled"
-      ? igResults.value.storyRes
-      : (igResults as PromiseRejectedResult);
-
-  // Build per-platform status list
+  // Build per-platform status list for user DM
   const lines: string[] = ["📊 *Publishing Results:*\n"];
 
-  // 1. Telegram
+  // 1. Telegram Channel
   if (tgResult.status === "fulfilled") {
-    lines.push("✅ *Telegram*: Video posted");
+    lines.push("✅ *Telegram Channel*: Video posted");
   } else {
     const msg =
       tgResult.reason instanceof Error
         ? tgResult.reason.message
         : String(tgResult.reason);
-    lines.push(`❌ *Telegram*: Failed\n\`${msg}\``);
+    lines.push(`❌ *Telegram Channel*: Failed\n\`${msg}\``);
   }
 
   // 2. Instagram Reel
@@ -264,20 +244,7 @@ async function handlePublish(
     lines.push(`❌ *Instagram Reel*: Failed\n\`${msg}\``);
   }
 
-  // 3. Instagram Story
-  if (storyResult.status === "fulfilled") {
-    lines.push(
-      `✅ *Instagram Story*: Published \\(ID: \`${storyResult.value}\`\\)`
-    );
-  } else {
-    const msg =
-      storyResult.reason instanceof Error
-        ? storyResult.reason.message
-        : String(storyResult.reason);
-    lines.push(`❌ *Instagram Story*: Failed\n\`${msg}\``);
-  }
-
-  // 4. Facebook Page
+  // 3. Facebook Page
   if (fbResult.status === "fulfilled") {
     lines.push(
       `✅ *Facebook Page*: Published \\(ID: \`${fbResult.value}\`\\)`
@@ -319,7 +286,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const senderId = message.from?.id;
   const chatId = message.chat.id;
 
-  // ── Security: only respond to the allowed user ───────────────────────────────
+  // ── Security: only respond to the allowed user in DM ──────────────────────────
   let allowedUserId: number;
   try {
     allowedUserId = getAllowedUserId();
@@ -367,7 +334,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
       await tgSendMessage(
         chatId,
-        "✅ Telegram caption saved\\!\n\nNow send the caption for *Instagram* \\(used for Reel, Story & Facebook Page\\):"
+        "✅ Telegram caption saved\\!\n\nNow send the caption for *Instagram* \\(used for Reel & Facebook Page\\):"
       );
       return NextResponse.json({ ok: true });
     }

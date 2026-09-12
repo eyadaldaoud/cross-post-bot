@@ -1,6 +1,6 @@
 # cross-post-bot
 
-A Next.js Telegram bot that automates cross-posting Instagram Reels across **Telegram**, **Instagram Reels**, **Instagram Stories**, and a **Facebook Page** simultaneously — personal use only.
+A Next.js Telegram bot that automates cross-posting Instagram Reels across **Telegram Channel**, **Instagram Reels**, and a **Facebook Page** simultaneously — personal use only.
 
 ---
 
@@ -23,6 +23,7 @@ Open [http://localhost:3000](http://localhost:3000) to view the setup dashboard.
 |---|---|
 | **Supabase project** | Free tier is fine |
 | **Telegram Bot** | Create via [@BotFather](https://t.me/BotFather) |
+| **Telegram Channel** | Add your bot as an Administrator with "Post Messages" permission |
 | **Instagram Graph API** | Access token + Business/Creator account ID from [Meta Developers](https://developers.facebook.com) |
 | **Facebook Page** | Page Access Token + Page ID with `pages_manage_posts` and `pages_read_engagement` |
 | **@Instagram_reels_dl_bot** | Free Telegram bot used to download reels (or send MP4 directly) |
@@ -41,6 +42,7 @@ cp .env.local.example .env.local
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather |
 | `TELEGRAM_ALLOWED_USER_ID` | Your numeric Telegram user ID (get from [@userinfobot](https://t.me/userinfobot)) |
+| `TELEGRAM_CHANNEL_ID` | Target Telegram channel (`@channelname` or `-100xxxxxxxxxx`) |
 | `SUPABASE_URL` | Your Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key (Project Settings → API) |
 | `SUPABASE_BUCKET_NAME` | Name of the public storage bucket (e.g. `reels`) |
@@ -107,7 +109,7 @@ curl "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo"
 ### 4. Conversation & Publishing Flow
 
 ```
-You                          Our Bot                    @Instagram_reels_dl_bot
+You (in Private DM)           Our Bot                    @Instagram_reels_dl_bot
  │                               │                               │
  │── instagram.com/reels/...  ──▶│                               │
  │                               │── "Forward me the video" ────▶│ (you do this)
@@ -122,18 +124,18 @@ You                          Our Bot                    @Instagram_reels_dl_bot
  │◀── "Send caption for IG" ─────│
  │
  │── [Instagram caption] ───────▶│
- │                               │── 🚀 Publish to 4 targets:
- │                               │    1. Telegram (sendVideo + follow-up if >1024 chars)
+ │                               │── 🚀 Publish to 3 targets:
+ │                               │    1. Telegram Channel (TELEGRAM_CHANNEL_ID)
  │                               │    2. Instagram Reel (create container → poll → publish)
- │                               │    3. Instagram Story (create container → poll → publish)
- │                               │    4. Facebook Page (/videos endpoint)
+ │                               │    3. Facebook Page (/videos endpoint)
  │                               │
- │◀── 📊 Per-platform report ────│ (✅ / ❌ for each target)
+ │◀── 📊 Per-platform report ────│ (Reported back to your private DM)
 ```
 
-- **Two separate captions**: Tailor your caption for Telegram and another for Instagram/Facebook.
+- **Private DM interaction**: All chat interactions (link prompt, caption prompts, progress updates, and final confirmation) happen in your direct message with the bot.
+- **Channel publishing**: The final video and Telegram caption are published directly to your designated channel (`TELEGRAM_CHANNEL_ID`).
 - **Caption length fix**: Telegram's 1024-character caption limit is handled automatically (if caption exceeds 1024 chars, it sends the video cleanly and posts the full text as an immediate follow-up message).
-- **Independent publishing**: If one platform fails (e.g. missing Facebook token or API rate limit), the other platforms still publish successfully and errors are reported clearly.
+- **Independent publishing**: Telegram Channel, Instagram Reel, and Facebook Page publish in parallel. If one platform fails, the others still succeed and the failure is clearly reported in your DM.
 - **Cancel command**: Send `/cancel` at any time to abort the current flow and clear temporary files.
 
 ---
@@ -143,10 +145,10 @@ You                          Our Bot                    @Instagram_reels_dl_bot
 ```
 lib/
 ├── facebook.ts     — Facebook Graph API: /videos publish endpoint
-├── instagram.ts    — Instagram Graph API: shared container flow for Reels & Stories
+├── instagram.ts    — Instagram Graph API: 3-step Reels container flow
 ├── session.ts      — Supabase-backed conversation state (safe for serverless)
 ├── storage.ts      — Supabase Storage: upload and delete video files
-└── telegram.ts     — Telegram Bot API: sendMessage, sendVideo (with caption length handling)
+└── telegram.ts     — Telegram Bot API: sendMessage, sendVideo, getTelegramChannelId
 
 app/api/telegram/webhook/
 └── route.ts        — Main webhook handler and conversation state machine
