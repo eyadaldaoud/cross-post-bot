@@ -190,7 +190,18 @@ export default function Home() {
 
       {/* ── Footer ───────────────────────────────────────────── */}
       <footer className="footer">
-        CrossPost Bot · Personal use only · Webhook at{" "}
+        CrossPost Bot · Personal use only ·{" "}
+        <a
+          href="/privacy-policy"
+          style={{
+            color: "var(--purple-l)",
+            textDecoration: "underline",
+            textUnderlineOffset: "3px",
+          }}
+        >
+          Privacy Policy
+        </a>{" "}
+        · Webhook at{" "}
         <code
           style={{
             fontFamily: "var(--font-geist-mono)",
