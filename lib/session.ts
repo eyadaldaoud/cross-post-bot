@@ -24,8 +24,12 @@ import { createClient } from "@supabase/supabase-js";
 
 export type SessionState =
   | "waiting_for_video"
+  | "processing_video"
+  | "choose_caption_mode"
+  | "waiting_for_single_caption"
   | "waiting_for_tg_caption"
-  | "waiting_for_ig_caption";
+  | "waiting_for_ig_caption"
+  | "publishing";
 
 export interface BotSession {
   chat_id: number;

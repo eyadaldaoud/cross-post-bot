@@ -55,22 +55,82 @@ async function callApi<T = unknown>(
 }
 
 /**
+ * Renders a clean ASCII visual progress bar.
+ * Example: renderProgressBar(0.6) => "[██████░░░░] 60%"
+ */
+export function renderProgressBar(progressRatio: number, length: number = 10): string {
+  const ratio = Math.min(1, Math.max(0, progressRatio));
+  const filled = Math.round(ratio * length);
+  const empty = length - filled;
+  return `[${"█".repeat(filled)}${"░".repeat(empty)}] ${Math.round(ratio * 100)}%`;
+}
+
+/**
  * Sends a plain text message to a chat or channel.
+ * Returns the message_id so it can be edited dynamically with progress updates.
  *
- * @param chatId    - Telegram chat ID or channel username/ID
- * @param text      - Message text
- * @param parseMode - Formatting parse mode (defaults to Markdown)
+ * @param chatId      - Telegram chat ID or channel username/ID
+ * @param text        - Message text
+ * @param parseMode   - Formatting parse mode (defaults to Markdown)
+ * @param replyMarkup - Optional inline keyboard or reply markup
  */
 export async function sendMessage(
   chatId: number | string,
   text: string,
-  parseMode: "Markdown" | "HTML" | null = "Markdown"
-): Promise<void> {
-  await callApi("sendMessage", {
+  parseMode: "Markdown" | "HTML" | null = "Markdown",
+  replyMarkup?: Record<string, unknown>
+): Promise<number> {
+  const res = await callApi<{ message_id: number }>("sendMessage", {
     chat_id: chatId,
     text,
     ...(parseMode ? { parse_mode: parseMode } : {}),
+    ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
   });
+  return res.message_id;
+}
+
+/**
+ * Edits an existing message in-place (ideal for live progress bars).
+ */
+export async function editMessageText(
+  chatId: number | string,
+  messageId: number,
+  text: string,
+  parseMode: "Markdown" | "HTML" | null = "Markdown",
+  replyMarkup?: Record<string, unknown>
+): Promise<void> {
+  try {
+    await callApi("editMessageText", {
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+      ...(parseMode ? { parse_mode: parseMode } : {}),
+      ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+    });
+  } catch (err) {
+    // If message is identical, Telegram returns "message is not modified"; ignore safely
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!msg.includes("message is not modified")) {
+      console.warn(`[telegram] editMessageText warning: ${msg}`);
+    }
+  }
+}
+
+/**
+ * Answers a callback query from an inline keyboard button.
+ */
+export async function answerCallbackQuery(
+  callbackQueryId: string,
+  text?: string
+): Promise<void> {
+  try {
+    await callApi("answerCallbackQuery", {
+      callback_query_id: callbackQueryId,
+      ...(text ? { text } : {}),
+    });
+  } catch (err) {
+    console.warn("[telegram] answerCallbackQuery warning:", err);
+  }
 }
 
 /**

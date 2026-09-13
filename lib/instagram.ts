@@ -59,7 +59,8 @@ type ContainerStatus = {
 /** Step 2: Poll until the container is FINISHED (or throw on ERROR). */
 async function waitForContainer(
   containerId: string,
-  accessToken: string
+  accessToken: string,
+  onProgress?: (attempt: number, maxAttempts: number) => Promise<void> | void
 ): Promise<void> {
   const url = `${IG_API_BASE}/${containerId}?fields=status_code,status&access_token=${accessToken}`;
 
@@ -77,6 +78,14 @@ async function waitForContainer(
     console.log(
       `[instagram][Reel] Container ${containerId}: ${json.status_code} (attempt ${attempt}/${MAX_POLL_ATTEMPTS})`
     );
+
+    if (onProgress) {
+      try {
+        await onProgress(attempt, MAX_POLL_ATTEMPTS);
+      } catch (err) {
+        console.warn("[instagram] onProgress callback error:", err);
+      }
+    }
 
     if (json.status_code === "FINISHED") return;
 
@@ -120,20 +129,22 @@ async function publishContainer(
 /**
  * Publishes a video as an Instagram Reel (3-step container flow).
  *
- * @param videoUrl - Publicly accessible video URL
- * @param caption  - Caption for the Reel
+ * @param videoUrl   - Publicly accessible video URL
+ * @param caption    - Caption for the Reel
+ * @param onProgress - Optional callback fired during container polling
  * @returns Published Instagram media ID
  */
 export async function publishReelToInstagram(
   videoUrl: string,
-  caption: string
+  caption: string,
+  onProgress?: (attempt: number, maxAttempts: number) => Promise<void> | void
 ): Promise<string> {
   const { accessToken, igUserId } = getCredentials();
 
   const containerId = await createContainer(igUserId, accessToken, videoUrl, caption);
   console.log(`[instagram][Reel] Created container: ${containerId}`);
 
-  await waitForContainer(containerId, accessToken);
+  await waitForContainer(containerId, accessToken, onProgress);
   console.log(`[instagram][Reel] Container FINISHED — publishing…`);
 
   const mediaId = await publishContainer(igUserId, accessToken, containerId);
