@@ -201,18 +201,7 @@ export default function Home() {
             </div>
 
             {/* Prerequisites At-a-Glance banner */}
-            <div
-              style={{
-                background: "rgba(124, 58, 237, 0.08)",
-                border: "1px solid rgba(124, 58, 237, 0.25)",
-                borderRadius: "14px",
-                padding: "1.25rem 1.5rem",
-                marginBottom: "2rem",
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-                gap: "1.25rem",
-              }}
-            >
+            <div className="prereq-banner">
               <div>
                 <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--purple-l)", marginBottom: "0.25rem" }}>
                   1. Telegram Account
@@ -239,14 +228,14 @@ export default function Home() {
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "1.5rem" }}>
+            <div className="requirements-grid">
               {/* Telegram */}
               <div
                 style={{
                   background: "var(--surface)",
                   border: "1px solid var(--border)",
                   borderRadius: "16px",
-                  padding: "1.75rem",
+                  padding: "1.5rem",
                   display: "flex",
                   flexDirection: "column",
                   gap: "1.5rem",

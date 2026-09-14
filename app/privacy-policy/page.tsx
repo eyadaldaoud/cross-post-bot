@@ -17,16 +17,7 @@ export default function PrivacyPolicy() {
       <Navbar />
 
       {/* ── Main Content ─────────────────────────────────────── */}
-      <main
-        style={{
-          position: "relative",
-          zIndex: 1,
-          maxWidth: "800px",
-          margin: "0 auto",
-          padding: "3rem 1.5rem 6rem",
-          lineHeight: 1.7,
-        }}
-      >
+      <main className="doc-container">
         <div style={{ marginBottom: "2.5rem" }}>
           <div
             style={{

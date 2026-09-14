@@ -17,16 +17,7 @@ export default function ReadmePage() {
       <Navbar />
 
       {/* ── Main Content ─────────────────────────────────────── */}
-      <main
-        style={{
-          position: "relative",
-          zIndex: 1,
-          maxWidth: "860px",
-          margin: "0 auto",
-          padding: "3rem 1.5rem 6rem",
-          lineHeight: 1.7,
-        }}
-      >
+      <main className="doc-container">
         {/* Header */}
         <div style={{ marginBottom: "3rem" }}>
           <div
@@ -246,7 +237,7 @@ export default function ReadmePage() {
             <h2 style={{ fontSize: "1.4rem", fontWeight: 700, color: "#fff", marginBottom: "1rem" }}>
               🔐 Environment Variables Reference
             </h2>
-            <div style={{ overflowX: "auto" }}>
+            <div className="table-wrapper">
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem", textAlign: "left" }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid var(--border)", color: "var(--muted)" }}>
