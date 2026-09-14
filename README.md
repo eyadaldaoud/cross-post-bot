@@ -1,67 +1,90 @@
-# cross-post-bot
+<div align="center">
 
-A Next.js Telegram bot that automates cross-posting Instagram Reels across **Telegram Channel**, **Instagram Reels**, and a **Facebook Page** simultaneously — personal use only.
+# ⚡ CrossPost Bot
+
+**Automate publishing Instagram Reels across Telegram Channels, Instagram Reels, and Facebook Pages simultaneously.**
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/licenses/MIT)
+[![Next.js](https://img.shields.io/badge/Next.js-16.3.5-black?logo=next.js)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript)](https://www.typescriptlang.org/)
+[![Supabase](https://img.shields.io/badge/Supabase-Database%20%26%20Storage-green?logo=supabase)](https://supabase.com/)
+[![Meta Graph API](https://img.shields.io/badge/Meta_Graph_API-v21.0-1877F2?logo=meta)](https://developers.facebook.com/)
+
+[**Live Demo & Deployer Dashboard**](https://your-domain.com) · [**Full Documentation**](https://your-domain.com/readme) · [**Privacy Policy**](https://your-domain.com/privacy-policy)
+
+</div>
 
 ---
 
-## Getting Started (Next.js)
+## 🌟 Highlights
 
-```bash
-npm install
-npm run dev
+- **🚀 3-Way Parallel Cross-Posting**: Automatically publishes your video to a **Telegram Channel**, **Instagram Reels** (via Graph API container flow), and a **Facebook Page** (`/videos` endpoint).
+- **🛡️ Zero Duplicate Guarantee**: Leverages Next.js 16 `after()`, database state locks, and in-memory `update_id` deduplication to prevent Telegram webhook timeout retries.
+- **🎨 Interactive Telegram Experience**: Dynamically edits messages in-place with live ASCII progress bars during upload and Meta API polling.
+- **📝 Flexible Caption Modes**: Choose between a single universal caption or customized captions for Telegram and Instagram via interactive inline keyboard buttons.
+- **⚡ 100% Serverless**: Built on Next.js App Router and Supabase. No long-running bot polling processes or expensive VPS servers required.
+- **🔒 Private by Default**: Configured with `TELEGRAM_ALLOWED_USER_ID` to strictly protect your bot from unauthorized public usage.
+
+---
+
+## 📐 Architecture & Workflow
+
+```
+You (Telegram Private DM)       CrossPost Bot (Next.js Serverless)       Target Platforms
+         │                                       │                              │
+         ├── Send Reel URL / Video MP4 ─────────▶│                              │
+         │                                       ├── Upload to Supabase Storage │
+         │◀── "Choose caption mode" (Buttons) ───┤                              │
+         │                                       │                              │
+         ├── Select Mode & Send Caption ────────▶│                              │
+         │                                       ├── [200 OK sent to Telegram in <100ms]
+         │                                       │   (Prevents webhook timeout retries)
+         │                                       │                              │
+         │                                       ├── Promise.allSettled() ─────▶│
+         │                                       │   ├── ✈️ Telegram Channel    │
+         │                                       │   ├── 📸 Instagram Reel      │
+         │                                       │   └── 📘 Facebook Page       │
+         │                                       │                              │
+         │◀── Live Progress Bar Updates ─────────┤ (In-place message edits)     │
+         │◀── Final Status Summary Card ─────────┤                              │
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to view the setup dashboard.
-
 ---
 
-## Cross-Post Bot Setup
+## 🚀 Quickstart
 
-### Prerequisites
+### 1. Clone & Install
 
-| Requirement | Notes |
-|---|---|
-| **Supabase project** | Free tier is fine |
-| **Telegram Bot** | Create via [@BotFather](https://t.me/BotFather) |
-| **Telegram Channel** | Add your bot as an Administrator with "Post Messages" permission |
-| **Instagram Graph API** | Access token + Business/Creator account ID from [Meta Developers](https://developers.facebook.com) |
-| **Facebook Page** | Page Access Token + Page ID with `pages_manage_posts` and `pages_read_engagement` |
-| **@Instagram_reels_dl_bot** | Free Telegram bot used to download reels (or send MP4 directly) |
+```bash
+git clone https://github.com/your-username/cross-post-bot.git
+cd cross-post-bot
+npm install
+```
 
----
-
-### 1. Environment Variables
-
-Copy `.env.local.example` to `.env.local` and fill in all values:
+### 2. Configure Environment Variables
 
 ```bash
 cp .env.local.example .env.local
 ```
 
-| Variable | Description |
-|---|---|
-| `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather |
-| `TELEGRAM_ALLOWED_USER_ID` | Your numeric Telegram user ID (get from [@userinfobot](https://t.me/userinfobot)) |
-| `TELEGRAM_CHANNEL_ID` | Target Telegram channel (`@channelname` or `-100xxxxxxxxxx`) |
-| `SUPABASE_URL` | Your Supabase project URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | Service role key (Project Settings → API) |
-| `SUPABASE_BUCKET_NAME` | Name of the public storage bucket (e.g. `reels`) |
-| `IG_ACCESS_TOKEN` | Instagram access token (`instagram_content_publish`) |
-| `IG_BUSINESS_ACCOUNT_ID` | Numeric Instagram Business/Creator account ID |
-| `FB_PAGE_ACCESS_TOKEN` | Facebook Page access token (`pages_manage_posts`, `pages_read_engagement`) |
-| `FB_PAGE_ID` | Numeric Facebook Page ID |
+Fill in the required values:
 
----
+| Variable | Description | Where to Get |
+|---|---|---|
+| `TELEGRAM_BOT_TOKEN` | Telegram Bot API token | [@BotFather](https://t.me/BotFather) |
+| `TELEGRAM_ALLOWED_USER_ID` | Your numeric Telegram user ID | [@userinfobot](https://t.me/userinfobot) |
+| `TELEGRAM_CHANNEL_ID` | Destination channel (`@username` or `-100...`) | Channel Info (Add bot as Admin) |
+| `SUPABASE_URL` | Supabase Project REST URL | Supabase Dashboard → Settings → API |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase Service Role Key | Supabase Dashboard → Settings → API |
+| `SUPABASE_BUCKET_NAME` | Public bucket name (e.g. `reels`) | Supabase Dashboard → Storage |
+| `IG_ACCESS_TOKEN` | Token with `instagram_content_publish` | Meta Developers App |
+| `IG_BUSINESS_ACCOUNT_ID` | Numeric Instagram Business ID | Meta Graph API `/me/accounts` |
+| `FB_PAGE_ACCESS_TOKEN` | Page-scoped access token | `GET /{page-id}?fields=access_token` |
+| `FB_PAGE_ID` | Numeric Facebook Page ID | Facebook Page About section |
 
-### 2. Supabase Setup (one-time)
+### 3. Supabase Database Migration
 
-#### Storage Bucket
-1. Go to **Storage** in the Supabase dashboard
-2. Create a new bucket named exactly as `SUPABASE_BUCKET_NAME` (e.g. `reels`)
-3. Make it **Public**
-
-#### Session Table
-Run this SQL in the **SQL Editor**:
+In your **Supabase Dashboard → SQL Editor**, run:
 
 ```sql
 CREATE TABLE bot_sessions (
@@ -74,92 +97,79 @@ CREATE TABLE bot_sessions (
 );
 ```
 
-> **If upgrading an existing table**, add the new `tg_caption` column:
+> **Upgrading an existing table?**
 > ```sql
 > ALTER TABLE bot_sessions ADD COLUMN IF NOT EXISTS tg_caption TEXT;
 > ```
 
----
+### 4. Register the Telegram Webhook
 
-### 3. Register the Telegram Webhook
-
-Telegram needs to know the URL to call when you send a message. Run this once (replace the values):
+Once deployed (or using `ngrok` for local dev):
 
 ```bash
-curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
+curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
   -H "Content-Type: application/json" \
   -d '{"url": "https://your-domain.com/api/telegram/webhook"}'
 ```
 
-**For local development** with [ngrok](https://ngrok.com):
-
+Verify webhook status:
 ```bash
-ngrok http 3000
-# then set the webhook to: https://<ngrok-id>.ngrok.io/api/telegram/webhook
-```
-
-To verify the webhook is set:
-
-```bash
-curl "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo"
+curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getWebhookInfo"
 ```
 
 ---
 
-### 4. Conversation & Publishing Flow
+## 📦 Project Structure
 
 ```
-You (in Private DM)           Our Bot                    @Instagram_reels_dl_bot
- │                               │                               │
- │── instagram.com/reels/...  ──▶│                               │
- │                               │── "Forward me the video" ────▶│ (you do this)
- │                               │                               │
- │◀───────────── video MP4 ──────┴───────────────────────────────│
- │
- │── forward video ─────────────▶│
- │                               │── upload to Supabase Storage
- │◀── "Send caption for Telegram"│
- │
- │── [Telegram caption] ────────▶│
- │◀── "Send caption for IG" ─────│
- │
- │── [Instagram caption] ───────▶│
- │                               │── 🚀 Publish to 3 targets:
- │                               │    1. Telegram Channel (TELEGRAM_CHANNEL_ID)
- │                               │    2. Instagram Reel (create container → poll → publish)
- │                               │    3. Facebook Page (/videos endpoint)
- │                               │
- │◀── 📊 Per-platform report ────│ (Reported back to your private DM)
-```
-
-- **Private DM interaction**: All chat interactions (link prompt, caption prompts, progress updates, and final confirmation) happen in your direct message with the bot.
-- **Channel publishing**: The final video and Telegram caption are published directly to your designated channel (`TELEGRAM_CHANNEL_ID`).
-- **Caption length fix**: Telegram's 1024-character caption limit is handled automatically (if caption exceeds 1024 chars, it sends the video cleanly and posts the full text as an immediate follow-up message).
-- **Independent publishing**: Telegram Channel, Instagram Reel, and Facebook Page publish in parallel. If one platform fails, the others still succeed and the failure is clearly reported in your DM.
-- **Cancel command**: Send `/cancel` at any time to abort the current flow and clear temporary files.
-
----
-
-### 5. Module Structure
-
-```
-lib/
-├── facebook.ts     — Facebook Graph API: /videos publish endpoint
-├── instagram.ts    — Instagram Graph API: 3-step Reels container flow
-├── session.ts      — Supabase-backed conversation state (safe for serverless)
-├── storage.ts      — Supabase Storage: upload and delete video files
-└── telegram.ts     — Telegram Bot API: sendMessage, sendVideo, getTelegramChannelId
-
-app/api/telegram/webhook/
-└── route.ts        — Main webhook handler and conversation state machine
+cross-post-bot/
+├── app/
+│   ├── api/telegram/webhook/
+│   │   └── route.ts          # Main webhook receiver, deduplication & state machine
+│   ├── privacy-policy/
+│   │   └── page.tsx          # Meta-compliant Privacy Policy for Live App mode
+│   ├── readme/
+│   │   └── page.tsx          # Web documentation & setup guide
+│   ├── page.tsx              # Open-source showcase & deployer dashboard
+│   ├── layout.tsx            # Root layout & fonts
+│   └── globals.css           # Modern dark-mode design system & animations
+├── lib/
+│   ├── facebook.ts           # Facebook Graph API /videos helper
+│   ├── instagram.ts          # Instagram Graph API 3-step Reels container runner
+│   ├── session.ts            # Supabase persistent conversation state
+│   ├── storage.ts            # Supabase Storage upload & transient deletion
+│   ├── telegram.ts           # Telegram Bot API client with in-place progress edits
+│   └── downloader.ts         # Video downloader helper
+└── .env.local.example        # Environment variable template
 ```
 
 ---
 
-## Deploy on Vercel
+## 🚢 Deployment
 
-```bash
-vercel deploy
-```
+### Deploy on Vercel
 
-Add all environment variables from `.env.local.example` in the Vercel project settings, then update the Telegram webhook URL to your production domain.
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new)
+
+1. Push your repository to GitHub.
+2. Import the repository into Vercel.
+3. Configure all 10 environment variables from `.env.local.example`.
+4. Deploy and update your Telegram webhook URL to `https://<your-project>.vercel.app/api/telegram/webhook`.
+
+---
+
+## 🤝 Contributing
+
+Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/your-username/cross-post-bot/issues).
+
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+---
+
+## 📄 License
+
+Distributed under the **MIT License**. See `LICENSE` for more information.
