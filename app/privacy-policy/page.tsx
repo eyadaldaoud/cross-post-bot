@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Navbar from "@/app/components/Navbar";
 
 export const metadata: Metadata = {
   title: "Privacy Policy — CrossPost Bot",
@@ -10,30 +11,10 @@ export const metadata: Metadata = {
 export default function PrivacyPolicy() {
   return (
     <>
-
       <div className="glow-blob" />
 
       {/* ── Nav ─────────────────────────────────────────────── */}
-      <nav className="nav">
-        <Link href="/" className="nav-brand" style={{ textDecoration: "none", color: "inherit" }}>
-          <div className="nav-logo">⚡</div>
-          CrossPost Bot
-        </Link>
-        <Link
-          href="/"
-          style={{
-            color: "var(--purple-l)",
-            fontSize: "0.85rem",
-            textDecoration: "none",
-            display: "flex",
-            alignItems: "center",
-            gap: "0.4rem",
-            fontWeight: 500,
-          }}
-        >
-          ← Back to Dashboard
-        </Link>
-      </nav>
+      <Navbar />
 
       {/* ── Main Content ─────────────────────────────────────── */}
       <main
